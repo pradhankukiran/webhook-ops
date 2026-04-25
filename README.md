@@ -45,6 +45,7 @@ Implemented:
 - public HTTP delivery through Celery
 - private agent delivery through a reverse tunnel proxy
 - agent enrollment command generation
+- per-agent tunnel authentication
 - tunnel-driven agent online/heartbeat/offline status sync
 - delivery attempts, retries, dead-letter state, replay-ready event storage
 - Django Admin management views
@@ -53,7 +54,7 @@ Implemented:
 Next phases:
 
 - dashboard views for event search and delivery inspection
-- per-agent tunnel authentication instead of a shared tunnel secret
+- agent secret rotation and revocation UI
 - production deployment hardening
 
 ## Local Development
@@ -147,7 +148,10 @@ In Django Admin:
 
 1. Create an `Agent`.
 2. Set its `Allowed targets`, for example `["localhost:8000"]`.
-3. Use the API action `POST /api/agents/<id>/enrollment/` to generate the run command.
+3. Use the API action `POST /api/agents/<id>/enrollment/` to generate a per-agent run command.
+
+The enrollment response contains the only plaintext copy of that agent's tunnel
+secret. Generating a new enrollment command rotates the agent secret.
 
 Build the native tunnel binaries:
 
@@ -168,11 +172,18 @@ Run the agent near the private app:
 agent/build/webhookops-agent join \
   --tunnel YOUR_WEBHOOKOPS_HOST:9700 \
   --id dev-machine \
-  --secret dev-secret \
+  --secret AGENT_SPECIFIC_SECRET_FROM_ENROLLMENT \
   --allow localhost:8000
 ```
 
-The tunnel posts status events to:
+The tunnel calls Django to authenticate the agent's HMAC proof before accepting
+the connection:
+
+```text
+/internal/tunnel/agent-auth/
+```
+
+It also posts status events to:
 
 ```text
 /internal/tunnel/agent-status/
