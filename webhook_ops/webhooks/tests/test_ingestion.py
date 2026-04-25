@@ -1,5 +1,7 @@
+import base64
 import hashlib
 import hmac
+import time
 
 import pytest
 from django.urls import reverse
@@ -61,6 +63,133 @@ def test_github_signature_verification_rejects_invalid_signature():
     )
 
     assert result.ok is False
+
+
+def test_generic_signature_accepts_valid_and_rejects_others():
+    source = WebhookSource(
+        provider=WebhookSource.Provider.GENERIC,
+        signing_secret="secret",
+    )
+    body = b'{"a": 1}'
+    sig = hmac.new(b"secret", body, hashlib.sha256).hexdigest()
+
+    assert verify_source_signature(
+        source, {"x-webhookops-signature": f"sha256={sig}"}, body
+    ).ok
+    assert not verify_source_signature(
+        source, {"x-webhookops-signature": "sha256=wrong"}, body
+    ).ok
+    assert not verify_source_signature(source, {}, body).ok
+
+
+def test_shopify_signature_accepts_valid_base64_hmac():
+    source = WebhookSource(
+        provider=WebhookSource.Provider.SHOPIFY,
+        signing_secret="secret",
+    )
+    body = b'{"order_id": 1}'
+    digest = hmac.new(b"secret", body, hashlib.sha256).digest()
+    sig = base64.b64encode(digest).decode()
+
+    assert verify_source_signature(
+        source, {"x-shopify-hmac-sha256": sig}, body
+    ).ok
+    assert not verify_source_signature(
+        source, {"x-shopify-hmac-sha256": "AAAA"}, body
+    ).ok
+    assert not verify_source_signature(source, {}, body).ok
+
+
+def test_slack_signature_accepts_fresh_and_rejects_stale():
+    source = WebhookSource(
+        provider=WebhookSource.Provider.SLACK,
+        signing_secret="slack-secret",
+    )
+    body = b"payload=hi"
+    fresh_ts = str(int(time.time()))
+    fresh_sig = hmac.new(
+        b"slack-secret",
+        f"v0:{fresh_ts}:".encode() + body,
+        hashlib.sha256,
+    ).hexdigest()
+
+    assert verify_source_signature(
+        source,
+        {"x-slack-request-timestamp": fresh_ts, "x-slack-signature": f"v0={fresh_sig}"},
+        body,
+    ).ok
+
+    stale_ts = str(int(time.time()) - 60 * 10)
+    stale_sig = hmac.new(
+        b"slack-secret",
+        f"v0:{stale_ts}:".encode() + body,
+        hashlib.sha256,
+    ).hexdigest()
+    stale = verify_source_signature(
+        source,
+        {"x-slack-request-timestamp": stale_ts, "x-slack-signature": f"v0={stale_sig}"},
+        body,
+    )
+    assert not stale.ok
+    assert "stale" in stale.reason
+
+    assert not verify_source_signature(
+        source,
+        {"x-slack-request-timestamp": fresh_ts, "x-slack-signature": "v0=wrong"},
+        body,
+    ).ok
+    assert not verify_source_signature(source, {}, body).ok
+
+
+def test_stripe_signature_accepts_any_matching_v1_and_rejects_stale():
+    source = WebhookSource(
+        provider=WebhookSource.Provider.STRIPE,
+        signing_secret="stripe-secret",
+    )
+    body = b'{"id": "evt_1"}'
+    fresh_ts = str(int(time.time()))
+    fresh_sig = hmac.new(
+        b"stripe-secret",
+        f"{fresh_ts}.".encode() + body,
+        hashlib.sha256,
+    ).hexdigest()
+
+    assert verify_source_signature(
+        source,
+        {"stripe-signature": f"t={fresh_ts},v1={fresh_sig}"},
+        body,
+    ).ok
+
+    multi = verify_source_signature(
+        source,
+        {"stripe-signature": f"t={fresh_ts},v1=oldsig,v1={fresh_sig}"},
+        body,
+    )
+    assert multi.ok
+
+    stale_ts = str(int(time.time()) - 60 * 10)
+    stale_sig = hmac.new(
+        b"stripe-secret",
+        f"{stale_ts}.".encode() + body,
+        hashlib.sha256,
+    ).hexdigest()
+    stale = verify_source_signature(
+        source,
+        {"stripe-signature": f"t={stale_ts},v1={stale_sig}"},
+        body,
+    )
+    assert not stale.ok
+    assert "stale" in stale.reason
+
+    assert not verify_source_signature(
+        source,
+        {"stripe-signature": f"t={fresh_ts},v1=deadbeef"},
+        body,
+    ).ok
+    assert not verify_source_signature(
+        source, {"stripe-signature": "garbage"}, body
+    ).ok
+    assert not verify_source_signature(source, {}, body).ok
 
 
 @pytest.mark.django_db
