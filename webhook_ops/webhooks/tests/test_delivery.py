@@ -6,6 +6,7 @@ from django.urls import reverse
 
 from webhook_ops.webhooks.delivery import deliver_event
 from webhook_ops.webhooks.models import (
+    Agent,
     DeliveryAttempt,
     Destination,
     ReplayRequest,
@@ -87,6 +88,87 @@ def test_deliver_event_marks_failed_delivery_for_retry():
     assert event.attempt_count == 1
     assert "HTTP 500" in event.last_error
     assert attempt.status == DeliveryAttempt.Status.FAILED
+
+
+@pytest.mark.django_db
+def test_deliver_event_routes_private_agent_delivery_through_proxy(settings):
+    settings.WEBHOOKOPS_PRIVATE_PROXY_URL = "http://127.0.0.1:9080"
+    agent = Agent.objects.create(
+        name="Dev machine",
+        slug="dev-machine",
+        status=Agent.Status.ONLINE,
+    )
+    destination = Destination.objects.create(
+        name="Private app",
+        slug="private-app",
+        mode=Destination.DeliveryMode.PRIVATE_AGENT,
+        url="http://localhost:8000/webhooks",
+        agent=agent,
+    )
+    source = WebhookSource.objects.create(
+        name="Generic",
+        slug="generic",
+        default_destination=destination,
+    )
+    event = WebhookEvent.objects.create(
+        source=source,
+        destination=destination,
+        idempotency_key="evt_private",
+        status=WebhookEvent.Status.QUEUED,
+        headers={"content-type": "application/json"},
+        payload={"id": "evt_private"},
+        raw_body='{"id": "evt_private"}',
+        body_sha256="private",
+    )
+    response = Mock(status_code=200, headers={}, text="ok")
+
+    with patch("webhook_ops.webhooks.delivery.requests.post", return_value=response) as post:
+        result = deliver_event(event.id)
+
+    event.refresh_from_db()
+    assert result.delivered is True
+    assert event.status == WebhookEvent.Status.DELIVERED
+    post.assert_called_once()
+    assert post.call_args.args[0] == "http://localhost:8000/webhooks"
+    assert post.call_args.kwargs["proxies"] == {
+        "http": "http://127.0.0.1:9080",
+        "https": "http://127.0.0.1:9080",
+    }
+
+
+@pytest.mark.django_db
+def test_private_agent_delivery_requires_agent():
+    destination = Destination.objects.create(
+        name="Private app",
+        slug="private-app",
+        mode=Destination.DeliveryMode.PRIVATE_AGENT,
+        url="http://localhost:8000/webhooks",
+    )
+    source = WebhookSource.objects.create(
+        name="Generic",
+        slug="generic",
+        default_destination=destination,
+    )
+    event = WebhookEvent.objects.create(
+        source=source,
+        destination=destination,
+        idempotency_key="evt_missing_agent",
+        status=WebhookEvent.Status.QUEUED,
+        headers={"content-type": "application/json"},
+        payload={"id": "evt_missing_agent"},
+        raw_body='{"id": "evt_missing_agent"}',
+        body_sha256="missing-agent",
+    )
+
+    with patch("webhook_ops.webhooks.delivery.requests.post") as post:
+        result = deliver_event(event.id)
+
+    event.refresh_from_db()
+    assert result.delivered is False
+    assert result.retry_after_seconds == 5
+    assert event.status == WebhookEvent.Status.FAILED
+    assert "requires an agent" in event.last_error
+    post.assert_not_called()
 
 
 @pytest.mark.django_db

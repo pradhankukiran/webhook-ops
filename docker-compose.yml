@@ -7,6 +7,7 @@ x-app-environment: &app-environment
   REDIS_URL: ${REDIS_URL:-redis://redis:6379/0}
   CELERY_BROKER_URL: ${CELERY_BROKER_URL:-redis://redis:6379/0}
   CELERY_RESULT_BACKEND: ${CELERY_RESULT_BACKEND:-redis://redis:6379/0}
+  WEBHOOKOPS_PRIVATE_PROXY_URL: ${WEBHOOKOPS_PRIVATE_PROXY_URL:-http://host.docker.internal:9080}
 
 services:
   db:
@@ -41,6 +42,8 @@ services:
       sh -c "python manage.py migrate --noinput &&
              gunicorn webhook_ops.wsgi:application --bind 0.0.0.0:8000"
     environment: *app-environment
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     ports:
       - "8000:8000"
     depends_on:
@@ -53,6 +56,8 @@ services:
     build: .
     command: celery -A webhook_ops worker --loglevel=info
     environment: *app-environment
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     depends_on:
       db:
         condition: service_healthy
@@ -63,6 +68,8 @@ services:
     build: .
     command: celery -A webhook_ops beat --loglevel=info
     environment: *app-environment
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     depends_on:
       db:
         condition: service_healthy

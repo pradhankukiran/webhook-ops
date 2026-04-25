@@ -5,10 +5,11 @@ from datetime import timedelta
 from typing import Any
 
 import requests
+from django.conf import settings
 from django.db import transaction
 from django.utils import timezone
 
-from .models import AuditLog, DeliveryAttempt, Destination, WebhookEvent
+from .models import Agent, AuditLog, DeliveryAttempt, Destination, WebhookEvent
 
 HOP_BY_HOP_HEADERS = {
     "host",
@@ -127,6 +128,55 @@ def perform_public_http_delivery(attempt: DeliveryAttempt) -> tuple[bool, dict[s
     }
 
 
+def perform_private_agent_delivery(attempt: DeliveryAttempt) -> tuple[bool, dict[str, Any]]:
+    event = attempt.event
+    destination = attempt.destination
+    if destination is None:
+        return False, {"error": "missing destination"}
+    if not destination.agent_id:
+        return False, {"error": "private destination requires an agent"}
+    if destination.agent and (
+        not destination.agent.is_active or destination.agent.status == Agent.Status.DISABLED
+    ):
+        return False, {"error": "private destination agent is disabled"}
+
+    proxy_url = settings.WEBHOOKOPS_PRIVATE_PROXY_URL
+    proxies = {
+        "http": proxy_url,
+        "https": proxy_url,
+    }
+
+    try:
+        response = requests.post(
+            destination.url,
+            data=event.raw_body.encode("utf-8"),
+            headers=attempt.request_headers,
+            timeout=destination.timeout_seconds,
+            verify=destination.verify_tls,
+            proxies=proxies,
+        )
+    except requests.RequestException as exc:
+        return False, {"error": str(exc)}
+
+    ok = 200 <= response.status_code < 300
+    return ok, {
+        "response_status_code": response.status_code,
+        "response_headers": dict(response.headers),
+        "response_body": _truncate(response.text),
+        "error": "" if ok else f"private destination returned HTTP {response.status_code}",
+    }
+
+
+def perform_delivery(attempt: DeliveryAttempt) -> tuple[bool, dict[str, Any]]:
+    if attempt.destination is None:
+        return False, {"error": "missing destination"}
+    if attempt.destination.mode == Destination.DeliveryMode.PUBLIC_HTTP:
+        return perform_public_http_delivery(attempt)
+    if attempt.destination.mode == Destination.DeliveryMode.PRIVATE_AGENT:
+        return perform_private_agent_delivery(attempt)
+    return False, {"error": f"unsupported delivery mode: {attempt.destination.mode}"}
+
+
 def finalize_delivery_attempt(
     attempt: DeliveryAttempt,
     ok: bool,
@@ -211,5 +261,5 @@ def deliver_event(event_id: int) -> DeliveryResult:
         "event__source",
         "destination",
     ).get(id=attempt.id)
-    ok, details = perform_public_http_delivery(attempt)
+    ok, details = perform_delivery(attempt)
     return finalize_delivery_attempt(attempt, ok, details)
