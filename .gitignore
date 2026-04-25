@@ -1,0 +1,45 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# Virtual environments
+.venv/
+venv/
+env/
+
+# Django/runtime
+*.sqlite3
+media/
+staticfiles/
+*.log
+
+# Local configuration
+.env
+.env.*
+!.env.example
+
+# Editors/OS
+.idea/
+.vscode/
+*.swp
+*~
+.DS_Store
+
+# Build artifacts
+dist/
+build/
+*.egg-info/
+
+# C/C++ build output for tunnel agent
+agent/build/
+cmake-build-*/
+CMakeFiles/
+CMakeCache.txt
+cmake_install.cmake
+Makefile
