@@ -13,10 +13,15 @@ from .models import (
 
 @admin.register(Agent)
 class AgentAdmin(admin.ModelAdmin):
-    list_display = ("name", "slug", "status", "is_active", "last_seen_at", "updated_at")
+    list_display = ("name", "slug", "status", "allowed_target_count", "is_active", "last_seen_at")
     list_filter = ("status", "is_active")
     search_fields = ("name", "slug")
     prepopulated_fields = {"slug": ("name",)}
+    readonly_fields = ("shared_secret_hash", "last_seen_at", "created_at", "updated_at")
+
+    @admin.display(description="Allowed targets")
+    def allowed_target_count(self, obj):
+        return len(obj.allowed_targets or [])
 
 
 @admin.register(Destination)
