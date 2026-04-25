@@ -1,0 +1,242 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>WebhookOps</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --navy: #1e3a8a;
+            --navy-dark: #172655;
+            --navy-darker: #0f1734;
+            --navy-50: #f0f4fe;
+            --navy-100: #e0ebfc;
+            --navy-200: #c0d5f7;
+            --ink: #0a0e1f;
+            --muted: #525a73;
+            --line: #d8dde8;
+            --bg: #fafbfd;
+        }
+        * { box-sizing: border-box; border-radius: 0 !important; margin: 0; padding: 0; }
+        html, body { height: 100%; }
+        body {
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+            color: var(--ink);
+            background: var(--bg);
+            -webkit-font-smoothing: antialiased;
+            -moz-osx-font-smoothing: grayscale;
+            line-height: 1.5;
+        }
+        code, .mono { font-family: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, monospace; }
+        a { color: var(--navy); text-decoration: none; }
+        a:hover { color: var(--navy-dark); }
+
+        .wrap {
+            max-width: 980px;
+            margin: 0 auto;
+            padding: 80px 32px 48px;
+        }
+
+        header { margin-bottom: 64px; }
+        .brand {
+            font-size: 56px;
+            font-weight: 800;
+            letter-spacing: -0.04em;
+            line-height: 1;
+            color: var(--navy);
+            margin-bottom: 16px;
+        }
+        .tagline {
+            font-size: 18px;
+            color: var(--muted);
+            max-width: 640px;
+        }
+        .pill {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            font-size: 12px;
+            font-weight: 500;
+            letter-spacing: 0.02em;
+            text-transform: uppercase;
+            padding: 6px 12px;
+            border: 1px solid var(--line);
+            color: var(--muted);
+            margin-bottom: 24px;
+            background: white;
+        }
+        .pill .dot {
+            width: 8px; height: 8px;
+            background: #16a34a;
+            display: inline-block;
+        }
+
+        section { margin-bottom: 56px; }
+        h2 {
+            font-size: 12px;
+            font-weight: 600;
+            letter-spacing: 0.12em;
+            text-transform: uppercase;
+            color: var(--muted);
+            margin-bottom: 16px;
+        }
+
+        .grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+            gap: 16px;
+        }
+        .card {
+            display: block;
+            padding: 24px;
+            background: white;
+            border: 1px solid var(--line);
+            transition: border-color 0.15s, transform 0.15s;
+        }
+        .card:hover {
+            border-color: var(--navy);
+            transform: translateY(-1px);
+        }
+        .card .name {
+            font-size: 17px;
+            font-weight: 600;
+            color: var(--ink);
+            margin-bottom: 6px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+        }
+        .card .name .arrow {
+            color: var(--navy);
+            font-weight: 400;
+            transition: transform 0.15s;
+        }
+        .card:hover .name .arrow { transform: translateX(3px); }
+        .card .desc {
+            font-size: 14px;
+            color: var(--muted);
+        }
+
+        .features {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+            gap: 24px;
+        }
+        .feature .label {
+            font-size: 14px;
+            font-weight: 600;
+            color: var(--ink);
+            margin-bottom: 4px;
+        }
+        .feature .desc {
+            font-size: 13px;
+            color: var(--muted);
+            line-height: 1.55;
+        }
+
+        .codeblock {
+            background: var(--navy-darker);
+            color: #e2e8ff;
+            padding: 20px 24px;
+            font-size: 13px;
+            line-height: 1.7;
+            overflow-x: auto;
+            border-left: 3px solid var(--navy);
+        }
+        .codeblock .c { color: #94a3c4; }
+        .codeblock .k { color: #93c5fd; }
+        .codeblock .s { color: #a7f3d0; }
+
+        footer {
+            margin-top: 80px;
+            padding-top: 32px;
+            border-top: 1px solid var(--line);
+            font-size: 13px;
+            color: var(--muted);
+            display: flex;
+            justify-content: space-between;
+            flex-wrap: wrap;
+            gap: 12px;
+        }
+        footer a { color: var(--muted); }
+        footer a:hover { color: var(--navy); }
+
+        @media (max-width: 600px) {
+            .wrap { padding: 48px 20px 32px; }
+            .brand { font-size: 40px; }
+            .tagline { font-size: 16px; }
+        }
+    </style>
+</head>
+<body>
+    <div class="wrap">
+        <header>
+            <div class="pill"><span class="dot"></span>Operational</div>
+            <h1 class="brand">WebhookOps</h1>
+            <p class="tagline">
+                A single-user, self-hosted webhook operations platform for reliable
+                ingestion, delivery, retry, and replay of third-party webhooks.
+            </p>
+        </header>
+
+        <section>
+            <h2>Console</h2>
+            <div class="grid">
+                <a class="card" href="/admin/">
+                    <div class="name">Admin <span class="arrow">&rarr;</span></div>
+                    <div class="desc">Browse events, configure sources and destinations, replay deliveries.</div>
+                </a>
+                <a class="card" href="/api/docs/">
+                    <div class="name">API Reference <span class="arrow">&rarr;</span></div>
+                    <div class="desc">Interactive Swagger UI for the REST API and schema.</div>
+                </a>
+                <a class="card" href="/healthz/">
+                    <div class="name">Health <span class="arrow">&rarr;</span></div>
+                    <div class="desc">JSON probe for uptime monitoring.</div>
+                </a>
+            </div>
+        </section>
+
+        <section>
+            <h2>Sending a webhook</h2>
+            <div class="codeblock mono"><span class="c"># Configure a Source in the admin first, then POST to its slug:</span>
+<span class="k">curl</span> -X POST <span class="s">https://webhook-ops.up.railway.app/in/&lt;source-slug&gt;/</span> \
+  -H <span class="s">'Content-Type: application/json'</span> \
+  -H <span class="s">'X-Webhook-Id: evt_001'</span> \
+  -d <span class="s">'{"hello": "world"}'</span></div>
+        </section>
+
+        <section>
+            <h2>What it does</h2>
+            <div class="features">
+                <div class="feature">
+                    <div class="label">Provider-aware ingest</div>
+                    <div class="desc">HMAC verification for Stripe, GitHub, Shopify, Slack, and generic sources.</div>
+                </div>
+                <div class="feature">
+                    <div class="label">Durable storage</div>
+                    <div class="desc">Every payload persisted before delivery; deduplicated by provider event id.</div>
+                </div>
+                <div class="feature">
+                    <div class="label">Reliable delivery</div>
+                    <div class="desc">Public HTTPS or private-agent destinations, with exponential-backoff retry and dead-lettering.</div>
+                </div>
+                <div class="feature">
+                    <div class="label">Replay anything</div>
+                    <div class="desc">Re-queue any event from the admin or REST API; full audit log of every transition.</div>
+                </div>
+            </div>
+        </section>
+
+        <footer>
+            <div>WebhookOps &middot; v0.1.0</div>
+            <div>
+                <a href="https://github.com/pradhankukiran/webhook-ops" target="_blank" rel="noopener">github.com/pradhankukiran/webhook-ops</a>
+            </div>
+        </footer>
+    </div>
+</body>
+</html>
