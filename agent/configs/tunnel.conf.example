@@ -10,7 +10,9 @@ secret=dev-secret
 # Persist the selected active agent between tunnel restarts.
 state=webhookops-tunnel.state
 
-# Optional callback used to sync connected agent status into Django.
+# Optional callbacks used to authenticate agents and sync connected status into Django.
+auth_url=http://127.0.0.1:8000/internal/tunnel/agent-auth/
+auth_token=dev-auth-token
 status_url=http://127.0.0.1:8000/internal/tunnel/agent-status/
 status_token=dev-status-token
 

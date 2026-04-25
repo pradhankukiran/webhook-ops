@@ -43,6 +43,8 @@ struct Config {
     std::string secret = "dev-secret";
     std::string state_path = "webhookops-tunnel.state";
     std::string initial_selected_agent;
+    std::string auth_url;
+    std::string auth_token;
     std::string status_url;
     std::string status_token;
     wops::TlsOptions tls;
@@ -422,6 +424,101 @@ bool post_agent_status(
     return sent;
 }
 
+int post_json(
+    const std::string& url_text,
+    const std::string& token,
+    const std::string& body,
+    const std::string& log_context) {
+    ParsedHttpUrl url;
+    if (!parse_http_url(url_text, &url)) {
+        wops::log_warn("tunnel", log_context + "_url_invalid", {{"url", url_text}});
+        return 0;
+    }
+
+    std::string error;
+    auto sock = wops::connect_tcp(url.host, url.port, &error);
+    if (!wops::socket_valid(sock)) {
+        wops::log_warn("tunnel", log_context + "_connect_failed", {{"error", error}});
+        return 0;
+    }
+
+    std::ostringstream request;
+    request << "POST " << url.path << " HTTP/1.1\r\n";
+    request << "Host: " << wops::endpoint_to_string(url.host, url.port) << "\r\n";
+    request << "Content-Type: application/json\r\n";
+    request << "Content-Length: " << body.size() << "\r\n";
+    request << "X-WebhookOps-Tunnel-Token: " << token << "\r\n";
+    request << "Connection: close\r\n\r\n";
+    request << body;
+
+    const std::string text = request.str();
+    if (!wops::send_all(sock, reinterpret_cast<const uint8_t*>(text.data()), text.size(), &error)) {
+        wops::log_warn("tunnel", log_context + "_send_failed", {{"error", error}});
+        wops::close_socket(sock);
+        return 0;
+    }
+
+    std::vector<uint8_t> buffer(1024);
+    const int got = wops::recv_some(sock, buffer.data(), buffer.size(), &error);
+    wops::close_socket(sock);
+    if (got <= 0) {
+        wops::log_warn("tunnel", log_context + "_response_missing", {{"error", error}});
+        return 0;
+    }
+
+    std::string response(buffer.begin(), buffer.begin() + got);
+    std::istringstream status_line(response);
+    std::string http_version;
+    int status_code = 0;
+    status_line >> http_version >> status_code;
+    return status_code;
+}
+
+std::string make_auth_payload(
+    const std::string& agent_id,
+    const std::string& nonce,
+    const std::string& proof,
+    const std::map<std::string, std::string>& metadata) {
+    std::ostringstream payload;
+    payload << "{\"agent_id\":\"" << json_escape(agent_id) << "\",";
+    payload << "\"nonce\":\"" << json_escape(nonce) << "\",";
+    payload << "\"proof\":\"" << json_escape(proof) << "\",";
+    payload << "\"metadata\":{";
+    bool first = true;
+    for (const auto& [key, value] : metadata) {
+        if (!first) {
+            payload << ",";
+        }
+        first = false;
+        payload << "\"" << json_escape(key) << "\":\"" << json_escape(value) << "\"";
+    }
+    payload << "}}";
+    return payload.str();
+}
+
+bool authenticate_agent(
+    const Config& config,
+    const std::string& agent_id,
+    const std::string& nonce,
+    const std::string& proof,
+    const std::string& peer) {
+    if (!config.auth_url.empty() && !config.auth_token.empty()) {
+        const std::string body = make_auth_payload(agent_id, nonce, proof, {{"peer", peer}});
+        const int status_code = post_json(config.auth_url, config.auth_token, body, "auth");
+        if (status_code < 200 || status_code >= 300) {
+            wops::log_warn(
+                "tunnel",
+                "agent_auth_callback_rejected",
+                {{"agent", agent_id}, {"status", std::to_string(status_code)}});
+            return false;
+        }
+        return true;
+    }
+
+    const auto expected = wops::hmac_sha256_hex(config.secret, agent_id + "\n" + nonce);
+    return wops::constant_time_equals(proof, expected);
+}
+
 class Controller {
    public:
     explicit Controller(Config config) : config_(std::move(config)) {}
@@ -665,9 +762,9 @@ void Controller::control_accept_loop() {
         }
 
         auto auth = channel->recv_frame(&error);
-        const auto expected = wops::hmac_sha256_hex(config_.secret, node_id + "\n" + nonce);
+        const std::string proof = auth ? wops::payload_text(auth->payload) : "";
         if (!auth || auth->type != wops::FrameType::AuthResponse ||
-            !wops::constant_time_equals(wops::payload_text(auth->payload), expected)) {
+            !authenticate_agent(config_, node_id, nonce, proof, peer)) {
             wops::log_warn("tunnel", "agent_auth_failed", {{"peer", peer}, {"agent", node_id}});
             channel->close();
             continue;
@@ -983,6 +1080,8 @@ void print_usage() {
     std::cout << "  --token token    legacy alias for --secret\n";
     std::cout << "  --state path\n";
     std::cout << "  --selected agent\n\n";
+    std::cout << "  --auth-url http://host:port/path\n";
+    std::cout << "  --auth-token token\n";
     std::cout << "  --status-url http://host:port/path\n";
     std::cout << "  --status-token token\n\n";
     std::cout << "  --tls-cert path\n";
@@ -1030,6 +1129,12 @@ void print_resolved_config(const Config& config) {
     if (!config.initial_selected_agent.empty()) {
         std::cout << "selected_agent=" << config.initial_selected_agent << "\n";
     }
+    if (!config.auth_url.empty()) {
+        std::cout << "auth_url=" << config.auth_url << "\n";
+    }
+    if (!config.auth_token.empty()) {
+        std::cout << "auth_token=(set)\n";
+    }
     if (!config.status_url.empty()) {
         std::cout << "status_url=" << config.status_url << "\n";
     }
@@ -1071,6 +1176,14 @@ bool apply_controller_config(const wops::ConfigFile& file, Config* config) {
 
     if (const auto value = wops::config_get(file, "selected_agent"); !value.empty()) {
         config->initial_selected_agent = value;
+    }
+
+    if (const auto value = wops::config_get(file, "auth_url"); !value.empty()) {
+        config->auth_url = value;
+    }
+
+    if (const auto value = wops::config_get(file, "auth_token"); !value.empty()) {
+        config->auth_token = value;
     }
 
     if (const auto value = wops::config_get(file, "status_url"); !value.empty()) {
@@ -1167,6 +1280,10 @@ bool parse_args(int argc, char** argv, Config* config) {
                 std::cerr << "--selected cannot be empty\n";
                 return false;
             }
+        } else if (arg == "--auth-url") {
+            config->auth_url = require_value(arg);
+        } else if (arg == "--auth-token") {
+            config->auth_token = require_value(arg);
         } else if (arg == "--status-url") {
             config->status_url = require_value(arg);
         } else if (arg == "--status-token") {

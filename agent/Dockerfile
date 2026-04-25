@@ -21,4 +21,4 @@ COPY --from=build /src/build/webhookops-agent /usr/local/bin/webhookops-agent
 
 EXPOSE 9700
 
-CMD ["sh", "-c", "webhookops-tunnel run --control 0.0.0.0:9700 --proxy 0.0.0.0:9080 --secret \"${WEBHOOKOPS_TUNNEL_SECRET:-dev-secret}\" --state /tmp/webhookops-tunnel.state --status-url \"${WEBHOOKOPS_TUNNEL_STATUS_URL:-}\" --status-token \"${WEBHOOKOPS_TUNNEL_STATUS_TOKEN:-}\""]
+CMD ["sh", "-c", "webhookops-tunnel run --control 0.0.0.0:9700 --proxy 0.0.0.0:9080 --secret \"${WEBHOOKOPS_TUNNEL_SECRET:-dev-secret}\" --state /tmp/webhookops-tunnel.state --auth-url \"${WEBHOOKOPS_TUNNEL_AUTH_URL:-}\" --auth-token \"${WEBHOOKOPS_TUNNEL_AUTH_TOKEN:-}\" --status-url \"${WEBHOOKOPS_TUNNEL_STATUS_URL:-}\" --status-token \"${WEBHOOKOPS_TUNNEL_STATUS_TOKEN:-}\""]
