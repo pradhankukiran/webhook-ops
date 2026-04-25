@@ -17,9 +17,8 @@ class AgentAdmin(admin.ModelAdmin):
     list_filter = ("status", "is_active")
     search_fields = ("name", "slug")
     prepopulated_fields = {"slug": ("name",)}
+    exclude = ("shared_secret_hash", "tunnel_secret")
     readonly_fields = (
-        "shared_secret_hash",
-        "tunnel_secret",
         "last_seen_at",
         "created_at",
         "updated_at",
