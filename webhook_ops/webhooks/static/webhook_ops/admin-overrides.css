@@ -1,0 +1,23 @@
+*,
+*::before,
+*::after {
+    border-radius: 0 !important;
+}
+
+#nav-sidebar-inner a.bg-primary-600.w-\[38px\],
+#nav-sidebar-inner a[href="/admin/"]:has(> .material-symbols-outlined) {
+    display: none !important;
+}
+
+#site-name a,
+.block.font-semibold.tracking-tight.text-xl {
+    font-size: 1.875rem !important;
+    font-weight: 800 !important;
+    letter-spacing: -0.03em !important;
+    line-height: 1.1 !important;
+    color: rgb(30 58 138) !important;
+}
+
+#site-name {
+    line-height: 1.1 !important;
+}

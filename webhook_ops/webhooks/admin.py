@@ -1,4 +1,5 @@
 from django.contrib import admin
+from unfold.admin import ModelAdmin, TabularInline
 
 from .models import (
     Agent,
@@ -14,7 +15,7 @@ from .tasks import deliver_webhook_event
 
 
 @admin.register(Agent)
-class AgentAdmin(admin.ModelAdmin):
+class AgentAdmin(ModelAdmin):
     list_display = ("name", "slug", "status", "allowed_target_count", "is_active", "last_seen_at")
     list_filter = ("status", "is_active")
     search_fields = ("name", "slug")
@@ -32,7 +33,7 @@ class AgentAdmin(admin.ModelAdmin):
 
 
 @admin.register(Destination)
-class DestinationAdmin(admin.ModelAdmin):
+class DestinationAdmin(ModelAdmin):
     list_display = ("name", "slug", "mode", "url", "agent", "is_active", "updated_at")
     list_filter = ("mode", "is_active", "verify_tls")
     search_fields = ("name", "slug", "url")
@@ -40,14 +41,14 @@ class DestinationAdmin(admin.ModelAdmin):
 
 
 @admin.register(WebhookSource)
-class WebhookSourceAdmin(admin.ModelAdmin):
+class WebhookSourceAdmin(ModelAdmin):
     list_display = ("name", "slug", "provider", "default_destination", "is_active", "updated_at")
     list_filter = ("provider", "is_active")
     search_fields = ("name", "slug")
     prepopulated_fields = {"slug": ("name",)}
 
 
-class DeliveryAttemptInline(admin.TabularInline):
+class DeliveryAttemptInline(TabularInline):
     model = DeliveryAttempt
     extra = 0
     readonly_fields = (
@@ -63,7 +64,7 @@ class DeliveryAttemptInline(admin.TabularInline):
 
 
 @admin.register(WebhookEvent)
-class WebhookEventAdmin(admin.ModelAdmin):
+class WebhookEventAdmin(ModelAdmin):
     list_display = (
         "id",
         "source",
@@ -95,7 +96,7 @@ class WebhookEventAdmin(admin.ModelAdmin):
 
 
 @admin.register(DeliveryAttempt)
-class DeliveryAttemptAdmin(admin.ModelAdmin):
+class DeliveryAttemptAdmin(ModelAdmin):
     list_display = (
         "event",
         "destination",
@@ -111,14 +112,14 @@ class DeliveryAttemptAdmin(admin.ModelAdmin):
 
 
 @admin.register(ReplayRequest)
-class ReplayRequestAdmin(admin.ModelAdmin):
+class ReplayRequestAdmin(ModelAdmin):
     list_display = ("event", "requested_by", "status", "processed_at", "created_at")
     list_filter = ("status",)
     search_fields = ("event__idempotency_key", "reason", "error")
 
 
 @admin.register(AuditLog)
-class AuditLogAdmin(admin.ModelAdmin):
+class AuditLogAdmin(ModelAdmin):
     list_display = ("action", "object_type", "object_id", "actor", "created_at")
     list_filter = ("action", "object_type")
     search_fields = ("action", "object_id", "message")

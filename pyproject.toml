@@ -8,6 +8,7 @@ dependencies = [
   "celery>=5.4,<6",
   "django-environ>=0.11,<1",
   "django-filter>=24.3,<26",
+  "django-unfold>=0.90.0",
   "django>=5.2,<6",
   "djangorestframework>=3.15,<4",
   "drf-spectacular>=0.27,<1",

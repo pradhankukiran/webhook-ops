@@ -3,6 +3,8 @@
 from pathlib import Path
 
 import environ
+from django.templatetags.static import static
+from django.urls import reverse_lazy
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 
@@ -29,6 +31,9 @@ ALLOWED_HOSTS = env("ALLOWED_HOSTS")
 CSRF_TRUSTED_ORIGINS = env("CSRF_TRUSTED_ORIGINS")
 
 INSTALLED_APPS = [
+    "unfold",
+    "unfold.contrib.filters",
+    "unfold.contrib.forms",
     "django.contrib.admin",
     "django.contrib.auth",
     "django.contrib.contenttypes",
@@ -145,3 +150,98 @@ SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")
 SESSION_COOKIE_HTTPONLY = True
 CSRF_COOKIE_HTTPONLY = True
 X_FRAME_OPTIONS = "DENY"
+
+UNFOLD = {
+    "SITE_TITLE": "WebhookOps",
+    "SITE_HEADER": "WebhookOps",
+    "SHOW_HISTORY": True,
+    "SHOW_VIEW_ON_SITE": False,
+    "THEME": "light",
+    "STYLES": [
+        lambda request: static("webhook_ops/admin-overrides.css"),
+    ],
+    "COLORS": {
+        "primary": {
+            "50": "240 245 254",
+            "100": "224 235 252",
+            "200": "192 213 247",
+            "300": "147 178 234",
+            "400": "96 134 213",
+            "500": "59 91 175",
+            "600": "30 58 138",
+            "700": "23 37 84",
+            "800": "15 23 52",
+            "900": "8 14 33",
+            "950": "3 7 18",
+        },
+    },
+    "SIDEBAR": {
+        "show_search": True,
+        "show_all_applications": False,
+        "navigation": [
+            {
+                "title": "Operations",
+                "separator": True,
+                "items": [
+                    {
+                        "title": "Webhook events",
+                        "icon": "bolt",
+                        "link": reverse_lazy("admin:webhooks_webhookevent_changelist"),
+                    },
+                    {
+                        "title": "Delivery attempts",
+                        "icon": "send",
+                        "link": reverse_lazy("admin:webhooks_deliveryattempt_changelist"),
+                    },
+                    {
+                        "title": "Replay requests",
+                        "icon": "replay",
+                        "link": reverse_lazy("admin:webhooks_replayrequest_changelist"),
+                    },
+                    {
+                        "title": "Audit log",
+                        "icon": "fact_check",
+                        "link": reverse_lazy("admin:webhooks_auditlog_changelist"),
+                    },
+                ],
+            },
+            {
+                "title": "Configuration",
+                "separator": True,
+                "items": [
+                    {
+                        "title": "Sources",
+                        "icon": "input",
+                        "link": reverse_lazy("admin:webhooks_webhooksource_changelist"),
+                    },
+                    {
+                        "title": "Destinations",
+                        "icon": "output",
+                        "link": reverse_lazy("admin:webhooks_destination_changelist"),
+                    },
+                    {
+                        "title": "Agents",
+                        "icon": "router",
+                        "link": reverse_lazy("admin:webhooks_agent_changelist"),
+                    },
+                ],
+            },
+            {
+                "title": "Access",
+                "separator": True,
+                "items": [
+                    {
+                        "title": "Users",
+                        "icon": "person",
+                        "link": reverse_lazy("admin:auth_user_changelist"),
+                    },
+                    {
+                        "title": "Groups",
+                        "icon": "group",
+                        "link": reverse_lazy("admin:auth_group_changelist"),
+                    },
+                ],
+            },
+        ],
+    },
+}
