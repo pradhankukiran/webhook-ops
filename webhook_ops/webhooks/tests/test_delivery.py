@@ -7,6 +7,7 @@ from django.urls import reverse
 from webhook_ops.webhooks.delivery import deliver_event
 from webhook_ops.webhooks.models import (
     Agent,
+    AuditLog,
     DeliveryAttempt,
     Destination,
     ReplayRequest,
@@ -169,6 +170,84 @@ def test_private_agent_delivery_requires_agent():
     assert event.status == WebhookEvent.Status.FAILED
     assert "requires an agent" in event.last_error
     post.assert_not_called()
+
+
+@pytest.mark.django_db
+def test_deliver_event_dead_letters_after_max_attempts():
+    destination = Destination.objects.create(
+        name="App",
+        slug="app",
+        url="https://app.example.test/webhooks",
+    )
+    source = WebhookSource.objects.create(
+        name="Generic",
+        slug="generic",
+        default_destination=destination,
+    )
+    event = WebhookEvent.objects.create(
+        source=source,
+        destination=destination,
+        idempotency_key="evt_dead",
+        status=WebhookEvent.Status.QUEUED,
+        max_attempts=1,
+        headers={"content-type": "application/json"},
+        payload={"id": "evt_dead"},
+        raw_body='{"id": "evt_dead"}',
+        body_sha256="dead",
+    )
+    response = Mock(status_code=500, headers={}, text="server error")
+
+    with patch("webhook_ops.webhooks.delivery.requests.post", return_value=response):
+        result = deliver_event(event.id)
+
+    event.refresh_from_db()
+    assert result.delivered is False
+    assert result.detail == "dead_lettered"
+    assert result.retry_after_seconds is None
+    assert event.status == WebhookEvent.Status.DEAD_LETTERED
+    assert event.attempt_count == 1
+    assert AuditLog.objects.filter(
+        action="webhook.dead_lettered", object_id=str(event.id)
+    ).exists()
+
+
+@pytest.mark.django_db
+def test_dead_letter_marks_pending_replay_failed():
+    destination = Destination.objects.create(
+        name="App",
+        slug="app",
+        url="https://app.example.test/webhooks",
+    )
+    source = WebhookSource.objects.create(
+        name="Generic",
+        slug="generic",
+        default_destination=destination,
+    )
+    event = WebhookEvent.objects.create(
+        source=source,
+        destination=destination,
+        idempotency_key="evt_dead_replay",
+        status=WebhookEvent.Status.QUEUED,
+        max_attempts=1,
+        headers={"content-type": "application/json"},
+        payload={"id": "evt_dead_replay"},
+        raw_body='{"id": "evt_dead_replay"}',
+        body_sha256="dead-replay",
+    )
+    replay = ReplayRequest.objects.create(
+        event=event,
+        status=ReplayRequest.Status.QUEUED,
+        reason="manual",
+    )
+    response = Mock(status_code=500, headers={}, text="server error")
+
+    with patch("webhook_ops.webhooks.delivery.requests.post", return_value=response):
+        deliver_event(event.id)
+
+    replay.refresh_from_db()
+    assert replay.status == ReplayRequest.Status.FAILED
+    assert replay.processed_at is not None
+    assert "HTTP 500" in replay.error
 
 
 @pytest.mark.django_db
