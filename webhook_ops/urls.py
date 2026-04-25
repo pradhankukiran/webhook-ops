@@ -7,6 +7,7 @@ from django.http import JsonResponse
 from django.shortcuts import render
 from django.urls import include, path
 from django.views.generic import TemplateView
+from django.views.generic.base import RedirectView
 from drf_spectacular.views import SpectacularAPIView, SpectacularSwaggerView
 
 
@@ -60,6 +61,10 @@ def health_check(request):
 
 urlpatterns = [
     path("", TemplateView.as_view(template_name="landing.html"), name="landing"),
+    path(
+        "favicon.ico",
+        RedirectView.as_view(url="/static/webhook_ops/favicon.svg", permanent=True),
+    ),
     path("admin/", admin.site.urls),
     path("healthz/", health_check, name="health-check"),
     path("api/schema/", SpectacularAPIView.as_view(), name="schema"),
