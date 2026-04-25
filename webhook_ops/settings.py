@@ -119,6 +119,12 @@ CELERY_TASK_ACKS_LATE = True
 CELERY_TASK_REJECT_ON_WORKER_LOST = True
 CELERY_TASK_TIME_LIMIT = 60
 CELERY_TASK_SOFT_TIME_LIMIT = 50
+CELERY_BEAT_SCHEDULE = {
+    "enqueue-due-webhook-events": {
+        "task": "webhooks.enqueue_due_webhook_events",
+        "schedule": 30.0,
+    }
+}
 
 SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")
 SESSION_COOKIE_HTTPONLY = True
