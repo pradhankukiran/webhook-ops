@@ -2,6 +2,7 @@ from rest_framework import status, viewsets
 from rest_framework.decorators import action
 from rest_framework.response import Response
 
+from .agents import build_agent_enrollment
 from .models import Agent, Destination, ReplayRequest, WebhookEvent, WebhookSource
 from .replay import replay_event
 from .serializers import (
@@ -19,6 +20,20 @@ class AgentViewSet(viewsets.ModelViewSet):
     serializer_class = AgentSerializer
     search_fields = ["name", "slug"]
     ordering_fields = ["name", "status", "updated_at"]
+
+    @action(detail=True, methods=["post"])
+    def enrollment(self, request, pk=None) -> Response:
+        enrollment = build_agent_enrollment(self.get_object())
+        return Response(
+            {
+                "agent_id": enrollment.agent.slug,
+                "tunnel": enrollment.tunnel_endpoint,
+                "allowed_targets": enrollment.allowed_targets,
+                "command": enrollment.command,
+                "config": enrollment.config,
+            },
+            status=status.HTTP_200_OK,
+        )
 
 
 class DestinationViewSet(viewsets.ModelViewSet):

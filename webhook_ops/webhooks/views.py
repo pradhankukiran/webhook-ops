@@ -1,9 +1,13 @@
+import hmac
+
+from django.conf import settings
 from django.shortcuts import get_object_or_404
 from rest_framework import status
 from rest_framework.permissions import AllowAny
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
+from .agents import VALID_STATUS_EVENTS, record_agent_status
 from .ingestion import ingest_event, normalize_headers
 from .models import AuditLog, WebhookEvent, WebhookSource
 from .signatures import verify_source_signature
@@ -42,4 +46,35 @@ class WebhookIngestView(APIView):
                 "duplicate": not ingested.created,
             },
             status=response_status,
+        )
+
+
+class TunnelAgentStatusView(APIView):
+    authentication_classes = []
+    permission_classes = [AllowAny]
+
+    def post(self, request) -> Response:
+        token = request.headers.get("x-webhookops-tunnel-token", "")
+        expected = settings.WEBHOOKOPS_TUNNEL_STATUS_TOKEN
+        if not expected or not hmac.compare_digest(token, expected):
+            return Response({"detail": "invalid tunnel token"}, status=status.HTTP_401_UNAUTHORIZED)
+
+        agent_id = str(request.data.get("agent_id", "")).strip()
+        event = str(request.data.get("event", "")).strip()
+        if not agent_id:
+            return Response({"detail": "agent_id is required"}, status=status.HTTP_400_BAD_REQUEST)
+        if event not in VALID_STATUS_EVENTS:
+            return Response({"detail": "unsupported event"}, status=status.HTTP_400_BAD_REQUEST)
+
+        metadata = request.data.get("metadata")
+        if not isinstance(metadata, dict):
+            metadata = {}
+        agent = record_agent_status(agent_id, event, metadata=metadata)
+        return Response(
+            {
+                "agent_id": agent.slug,
+                "status": agent.status,
+                "last_seen_at": agent.last_seen_at,
+            },
+            status=status.HTTP_200_OK,
         )

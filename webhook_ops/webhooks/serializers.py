@@ -11,6 +11,7 @@ class AgentSerializer(serializers.ModelSerializer):
             "name",
             "slug",
             "status",
+            "allowed_targets",
             "last_seen_at",
             "is_active",
             "created_at",
