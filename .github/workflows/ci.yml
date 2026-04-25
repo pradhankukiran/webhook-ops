@@ -30,3 +30,9 @@ jobs:
 
       - name: Tests
         run: uv run pytest
+
+      - name: Install tunnel build dependencies
+        run: sudo apt-get update && sudo apt-get install -y cmake g++ libssl-dev
+
+      - name: Build tunnel agent
+        run: cmake -S agent -B agent/build && cmake --build agent/build
