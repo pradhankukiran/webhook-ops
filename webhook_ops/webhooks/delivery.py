@@ -9,7 +9,7 @@ from django.conf import settings
 from django.db import transaction
 from django.utils import timezone
 
-from .models import Agent, AuditLog, DeliveryAttempt, Destination, WebhookEvent
+from .models import Agent, AuditLog, DeliveryAttempt, Destination, ReplayRequest, WebhookEvent
 
 HOP_BY_HOP_HEADERS = {
     "host",
@@ -177,6 +177,27 @@ def perform_delivery(attempt: DeliveryAttempt) -> tuple[bool, dict[str, Any]]:
     return False, {"error": f"unsupported delivery mode: {attempt.destination.mode}"}
 
 
+def finalize_pending_replays(
+    event: WebhookEvent,
+    *,
+    succeeded: bool,
+    error: str = "",
+) -> None:
+    new_status = (
+        ReplayRequest.Status.COMPLETED if succeeded else ReplayRequest.Status.FAILED
+    )
+    now = timezone.now()
+    ReplayRequest.objects.filter(
+        event=event,
+        status=ReplayRequest.Status.QUEUED,
+    ).update(
+        status=new_status,
+        processed_at=now,
+        error="" if succeeded else error,
+        updated_at=now,
+    )
+
+
 def finalize_delivery_attempt(
     attempt: DeliveryAttempt,
     ok: bool,
@@ -208,6 +229,7 @@ def finalize_delivery_attempt(
         event.status = WebhookEvent.Status.DELIVERED
         event.last_error = ""
         event.save(update_fields=["status", "last_error", "updated_at"])
+        finalize_pending_replays(event, succeeded=True)
         AuditLog.objects.create(
             action="webhook.delivered",
             object_type="WebhookEvent",
@@ -222,6 +244,7 @@ def finalize_delivery_attempt(
         event.next_attempt_at = timezone.now()
         event.last_error = attempt.error
         event.save(update_fields=["status", "next_attempt_at", "last_error", "updated_at"])
+        finalize_pending_replays(event, succeeded=False, error=attempt.error)
         AuditLog.objects.create(
             action="webhook.dead_lettered",
             object_type="WebhookEvent",

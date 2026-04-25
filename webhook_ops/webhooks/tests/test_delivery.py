@@ -172,6 +172,44 @@ def test_private_agent_delivery_requires_agent():
 
 
 @pytest.mark.django_db
+def test_successful_delivery_marks_pending_replay_completed():
+    destination = Destination.objects.create(
+        name="App",
+        slug="app",
+        url="https://app.example.test/webhooks",
+    )
+    source = WebhookSource.objects.create(
+        name="Generic",
+        slug="generic",
+        default_destination=destination,
+    )
+    event = WebhookEvent.objects.create(
+        source=source,
+        destination=destination,
+        idempotency_key="evt_replay_done",
+        status=WebhookEvent.Status.QUEUED,
+        headers={"content-type": "application/json"},
+        payload={"id": "evt_replay_done"},
+        raw_body='{"id": "evt_replay_done"}',
+        body_sha256="replay-done",
+    )
+    replay = ReplayRequest.objects.create(
+        event=event,
+        status=ReplayRequest.Status.QUEUED,
+        reason="manual",
+    )
+    response = Mock(status_code=200, headers={}, text="ok")
+
+    with patch("webhook_ops.webhooks.delivery.requests.post", return_value=response):
+        deliver_event(event.id)
+
+    replay.refresh_from_db()
+    assert replay.status == ReplayRequest.Status.COMPLETED
+    assert replay.processed_at is not None
+    assert replay.error == ""
+
+
+@pytest.mark.django_db
 def test_replay_api_resets_event_and_queues_delivery(client):
     user = get_user_model().objects.create_superuser(
         username="admin",
