@@ -16,7 +16,8 @@ env/
 # Django/runtime
 *.sqlite3
 media/
-staticfiles/
+staticfiles/*
+!staticfiles/.gitkeep
 *.log
 
 # Local configuration
