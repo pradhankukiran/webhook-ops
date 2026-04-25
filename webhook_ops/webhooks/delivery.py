@@ -76,7 +76,7 @@ def mark_event_without_destination(event: WebhookEvent) -> DeliveryResult:
 def begin_delivery_attempt(event_id: int) -> DeliveryAttempt | None:
     with transaction.atomic():
         event = (
-            WebhookEvent.objects.select_for_update()
+            WebhookEvent.objects.select_for_update(of=("self",))
             .select_related("source", "destination")
             .get(id=event_id)
         )
