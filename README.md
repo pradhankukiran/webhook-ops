@@ -50,7 +50,7 @@ Implemented:
 Next phases:
 
 - replay API and dashboard actions
-- private delivery agent based on `lan-proxy-mesh`
+- private delivery agent for local and internal services
 - dashboard views for event search and delivery inspection
 - production deployment hardening
 

@@ -1,0 +1,17 @@
+# Public host:port for the WebhookOps tunnel service.
+tunnel=YOUR_WEBHOOKOPS_HOST:9700
+
+# Agent identity shown in the tunnel console.
+id=agent-01
+
+# Shared secret used for HMAC challenge-response authentication.
+secret=dev-secret
+
+# Exact private targets this agent is allowed to reach.
+allow=localhost:8000
+allow=127.0.0.1:8000
+
+# Optional TLS for agent-to-tunnel traffic.
+# tls=true
+# tls_ca=server.crt
+# tls_insecure=false

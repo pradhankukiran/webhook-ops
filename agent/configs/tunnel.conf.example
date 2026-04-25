@@ -1,0 +1,15 @@
+# Listener used by private agents to connect back to WebhookOps.
+control=0.0.0.0:9700
+
+# Local HTTP proxy used by the Django delivery worker.
+proxy=127.0.0.1:9080
+
+# Shared secret used for agent HMAC challenge-response authentication.
+secret=dev-secret
+
+# Persist the selected active agent between tunnel restarts.
+state=webhookops-tunnel.state
+
+# Optional TLS for agent-to-tunnel traffic.
+# tls_cert=server.crt
+# tls_key=server.key
