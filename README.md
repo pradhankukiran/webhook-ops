@@ -43,15 +43,15 @@ Implemented:
 - provider-aware idempotency extraction
 - signature verification for generic, GitHub, Shopify, Slack, and Stripe-style requests
 - public HTTP delivery through Celery
+- private agent delivery through a reverse tunnel proxy
 - delivery attempts, retries, dead-letter state, replay-ready event storage
 - Django Admin management views
-- Docker Compose runtime with Postgres, Redis, web, worker, and beat services
+- Docker Compose runtime with Postgres, Redis, web, worker, beat, and tunnel services
 
 Next phases:
 
-- replay API and dashboard actions
-- private delivery agent for local and internal services
 - dashboard views for event search and delivery inspection
+- agent enrollment and status sync into Django
 - production deployment hardening
 
 ## Local Development
@@ -132,11 +132,58 @@ curl -X POST http://localhost:8000/in/generic/ \
 The event will be stored, queued, delivered by Celery, and visible in Django
 Admin with its delivery attempts.
 
+## Private Agent Delivery
+
+Private delivery lets WebhookOps deliver webhooks to an app that is only reachable
+from a connected agent machine.
+
+```text
+WebhookOps worker -> tunnel proxy -> connected agent -> localhost/internal app
+```
+
+Build the native tunnel binaries:
+
+```bash
+cmake -S agent -B agent/build
+cmake --build agent/build
+```
+
+Run the tunnel service on the WebhookOps host:
+
+```bash
+agent/build/webhookops-tunnel run --config agent/configs/tunnel.conf.example
+```
+
+Run the agent near the private app:
+
+```bash
+agent/build/webhookops-agent join \
+  --tunnel YOUR_WEBHOOKOPS_HOST:9700 \
+  --id dev-machine \
+  --secret dev-secret \
+  --allow localhost:8000
+```
+
+Then create a Django Admin `Destination`:
+
+```text
+Mode: Private Agent
+URL:  http://localhost:8000/webhooks/stripe
+Agent: dev-machine
+```
+
+When a webhook is delivered to that destination, the Celery worker posts through
+`WEBHOOKOPS_PRIVATE_PROXY_URL`. With Docker Compose this defaults to
+`http://tunnel:9080`; for native local development it defaults to
+`http://127.0.0.1:9080`.
+
 ## Verification
 
 ```bash
 uv run ruff check .
 uv run python manage.py check
 uv run pytest
+cmake -S agent -B agent/build
+cmake --build agent/build
 docker compose config
 ```
