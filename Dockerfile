@@ -16,8 +16,9 @@ COPY pyproject.toml uv.lock ./
 RUN uv sync --frozen --no-dev
 
 COPY . .
-RUN python manage.py collectstatic --noinput
+RUN python manage.py collectstatic --noinput \
+    && chmod +x ./start.sh
 
 EXPOSE 8000
 
-CMD ["gunicorn", "webhook_ops.wsgi:application", "--bind", "0.0.0.0:8000"]
+CMD ["./start.sh"]
