@@ -7,7 +7,7 @@ from rest_framework.permissions import AllowAny
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
-from .agents import VALID_STATUS_EVENTS, record_agent_status
+from .agents import VALID_STATUS_EVENTS, record_agent_status, verify_agent_auth
 from .ingestion import ingest_event, normalize_headers
 from .models import AuditLog, WebhookEvent, WebhookSource
 from .signatures import verify_source_signature
@@ -75,6 +75,38 @@ class TunnelAgentStatusView(APIView):
                 "agent_id": agent.slug,
                 "status": agent.status,
                 "last_seen_at": agent.last_seen_at,
+            },
+            status=status.HTTP_200_OK,
+        )
+
+
+class TunnelAgentAuthView(APIView):
+    authentication_classes = []
+    permission_classes = [AllowAny]
+
+    def post(self, request) -> Response:
+        token = request.headers.get("x-webhookops-tunnel-token", "")
+        expected = settings.WEBHOOKOPS_TUNNEL_AUTH_TOKEN
+        if not expected or not hmac.compare_digest(token, expected):
+            return Response({"detail": "invalid tunnel token"}, status=status.HTTP_401_UNAUTHORIZED)
+
+        metadata = request.data.get("metadata")
+        if not isinstance(metadata, dict):
+            metadata = {}
+        try:
+            agent = verify_agent_auth(
+                agent_slug=str(request.data.get("agent_id", "")).strip(),
+                nonce=str(request.data.get("nonce", "")).strip(),
+                proof=str(request.data.get("proof", "")).strip(),
+                metadata=metadata,
+            )
+        except ValueError as exc:
+            return Response({"detail": str(exc)}, status=status.HTTP_401_UNAUTHORIZED)
+
+        return Response(
+            {
+                "agent_id": agent.slug,
+                "ok": True,
             },
             status=status.HTTP_200_OK,
         )

@@ -1,3 +1,6 @@
+import hashlib
+import hmac
+
 import pytest
 from django.contrib.auth import get_user_model
 from django.contrib.auth.hashers import check_password
@@ -9,7 +12,6 @@ from webhook_ops.webhooks.models import Agent, AuditLog
 @pytest.mark.django_db
 def test_agent_enrollment_returns_run_command_and_hashes_secret(client, settings):
     settings.WEBHOOKOPS_PUBLIC_TUNNEL_ENDPOINT = "webhookops.example.test:9700"
-    settings.WEBHOOKOPS_TUNNEL_SECRET = "secret-value"
     user = get_user_model().objects.create_superuser(
         username="admin",
         email="admin@example.test",
@@ -30,8 +32,10 @@ def test_agent_enrollment_returns_run_command_and_hashes_secret(client, settings
     assert "--tunnel webhookops.example.test:9700" in response.data["command"]
     assert "--id dev-machine" in response.data["command"]
     assert "--allow localhost:8000" in response.data["command"]
-    assert "secret=secret-value" in response.data["config"]
-    assert check_password("secret-value", agent.shared_secret_hash)
+    assert "--secret " in response.data["command"]
+    assert "secret=" in response.data["config"]
+    assert agent.tunnel_secret
+    assert check_password(agent.tunnel_secret, agent.shared_secret_hash)
     assert AuditLog.objects.filter(action="agent.enrollment_generated").exists()
 
 
@@ -89,3 +93,50 @@ def test_tunnel_status_endpoint_rejects_invalid_token(client, settings):
 
     assert response.status_code == 401
     assert Agent.objects.count() == 0
+
+
+@pytest.mark.django_db
+def test_tunnel_auth_endpoint_accepts_agent_hmac(client, settings):
+    settings.WEBHOOKOPS_TUNNEL_AUTH_TOKEN = "auth-token"
+    agent = Agent.objects.create(
+        name="Dev machine",
+        slug="dev-machine",
+        tunnel_secret="agent-secret",
+    )
+    nonce = "nonce-123"
+    proof = hmac.new(
+        b"agent-secret",
+        f"{agent.slug}\n{nonce}".encode(),
+        hashlib.sha256,
+    ).hexdigest()
+
+    response = client.post(
+        reverse("tunnel-agent-auth"),
+        data={"agent_id": agent.slug, "nonce": nonce, "proof": proof},
+        content_type="application/json",
+        HTTP_X_WEBHOOKOPS_TUNNEL_TOKEN="auth-token",
+    )
+
+    assert response.status_code == 200
+    assert response.data["ok"] is True
+    assert AuditLog.objects.filter(action="agent.authenticated", object_id=str(agent.id)).exists()
+
+
+@pytest.mark.django_db
+def test_tunnel_auth_endpoint_rejects_bad_agent_hmac(client, settings):
+    settings.WEBHOOKOPS_TUNNEL_AUTH_TOKEN = "auth-token"
+    agent = Agent.objects.create(
+        name="Dev machine",
+        slug="dev-machine",
+        tunnel_secret="agent-secret",
+    )
+
+    response = client.post(
+        reverse("tunnel-agent-auth"),
+        data={"agent_id": agent.slug, "nonce": "nonce-123", "proof": "wrong"},
+        content_type="application/json",
+        HTTP_X_WEBHOOKOPS_TUNNEL_TOKEN="auth-token",
+    )
+
+    assert response.status_code == 401
+    assert AuditLog.objects.filter(action="agent.auth_rejected", object_id=str(agent.id)).exists()

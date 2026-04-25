@@ -1,3 +1,6 @@
+import hashlib
+import hmac
+import secrets
 from dataclasses import dataclass
 
 from django.conf import settings
@@ -54,9 +57,10 @@ def normalized_allowed_targets(agent: Agent) -> list[str]:
 
 
 def build_agent_enrollment(agent: Agent) -> AgentEnrollment:
-    secret = settings.WEBHOOKOPS_TUNNEL_SECRET
+    secret = secrets.token_urlsafe(32)
     agent.shared_secret_hash = make_password(secret)
-    agent.save(update_fields=["shared_secret_hash", "updated_at"])
+    agent.tunnel_secret = secret
+    agent.save(update_fields=["shared_secret_hash", "tunnel_secret", "updated_at"])
     AuditLog.objects.create(
         action="agent.enrollment_generated",
         object_type="Agent",
@@ -70,6 +74,47 @@ def build_agent_enrollment(agent: Agent) -> AgentEnrollment:
         secret=secret,
         allowed_targets=normalized_allowed_targets(agent),
     )
+
+
+def verify_agent_auth(
+    agent_slug: str,
+    nonce: str,
+    proof: str,
+    metadata: dict | None = None,
+) -> Agent:
+    if not agent_slug or not nonce or not proof:
+        raise ValueError("agent_id, nonce, and proof are required")
+
+    try:
+        agent = Agent.objects.get(slug=agent_slug)
+    except Agent.DoesNotExist as exc:
+        raise ValueError("unknown agent") from exc
+
+    if not agent.is_active or agent.status == Agent.Status.DISABLED:
+        raise ValueError("agent is disabled")
+    if not agent.tunnel_secret:
+        raise ValueError("agent has no tunnel secret")
+
+    signed_message = f"{agent.slug}\n{nonce}".encode()
+    expected = hmac.new(agent.tunnel_secret.encode(), signed_message, hashlib.sha256).hexdigest()
+    if not hmac.compare_digest(proof, expected):
+        AuditLog.objects.create(
+            action="agent.auth_rejected",
+            object_type="Agent",
+            object_id=str(agent.id),
+            message=f"Rejected tunnel auth for {agent.slug}",
+            metadata={"agent": agent.slug, **(metadata or {})},
+        )
+        raise ValueError("invalid agent proof")
+
+    AuditLog.objects.create(
+        action="agent.authenticated",
+        object_type="Agent",
+        object_id=str(agent.id),
+        message=f"Authenticated tunnel agent {agent.slug}",
+        metadata={"agent": agent.slug, **(metadata or {})},
+    )
+    return agent
 
 
 def record_agent_status(agent_slug: str, event: str, metadata: dict | None = None) -> Agent:

@@ -22,6 +22,7 @@ class Agent(TimestampedModel):
     slug = models.SlugField(unique=True)
     status = models.CharField(max_length=20, choices=Status.choices, default=Status.OFFLINE)
     shared_secret_hash = models.CharField(max_length=255, blank=True)
+    tunnel_secret = models.CharField(max_length=255, blank=True)
     allowed_targets = models.JSONField(default=list, blank=True)
     last_seen_at = models.DateTimeField(null=True, blank=True)
     is_active = models.BooleanField(default=True)

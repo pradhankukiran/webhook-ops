@@ -8,7 +8,7 @@ from .api import (
     WebhookEventViewSet,
     WebhookSourceViewSet,
 )
-from .views import TunnelAgentStatusView, WebhookIngestView
+from .views import TunnelAgentAuthView, TunnelAgentStatusView, WebhookIngestView
 
 router = DefaultRouter()
 router.register("agents", AgentViewSet, basename="agents")
@@ -19,6 +19,11 @@ router.register("replay-requests", ReplayRequestViewSet, basename="replay-reques
 
 urlpatterns = [
     path("in/<slug:source_slug>/", WebhookIngestView.as_view(), name="webhook-ingest"),
+    path(
+        "internal/tunnel/agent-auth/",
+        TunnelAgentAuthView.as_view(),
+        name="tunnel-agent-auth",
+    ),
     path(
         "internal/tunnel/agent-status/",
         TunnelAgentStatusView.as_view(),
