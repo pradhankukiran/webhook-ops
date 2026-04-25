@@ -43,6 +43,8 @@ struct Config {
     std::string secret = "dev-secret";
     std::string state_path = "webhookops-tunnel.state";
     std::string initial_selected_agent;
+    std::string status_url;
+    std::string status_token;
     wops::TlsOptions tls;
 };
 
@@ -301,6 +303,125 @@ bool parse_hello(const std::string& payload, std::string* id) {
     return !id->empty();
 }
 
+struct ParsedHttpUrl {
+    std::string host;
+    uint16_t port = 80;
+    std::string path = "/";
+};
+
+bool parse_http_url(const std::string& url, ParsedHttpUrl* parsed) {
+    constexpr const char* prefix = "http://";
+    if (!starts_with_ci(url, prefix)) {
+        return false;
+    }
+    const std::string rest = url.substr(std::string(prefix).size());
+    const size_t slash = rest.find('/');
+    const std::string host_port = slash == std::string::npos ? rest : rest.substr(0, slash);
+    const auto endpoint = wops::parse_host_port(host_port, 80);
+    if (!endpoint) {
+        return false;
+    }
+    parsed->host = endpoint->first;
+    parsed->port = endpoint->second;
+    parsed->path = slash == std::string::npos ? "/" : rest.substr(slash);
+    return !parsed->host.empty();
+}
+
+std::string json_escape(const std::string& value) {
+    std::ostringstream escaped;
+    for (char ch : value) {
+        switch (ch) {
+            case '"':
+                escaped << "\\\"";
+                break;
+            case '\\':
+                escaped << "\\\\";
+                break;
+            case '\n':
+                escaped << "\\n";
+                break;
+            case '\r':
+                escaped << "\\r";
+                break;
+            case '\t':
+                escaped << "\\t";
+                break;
+            default:
+                const auto value = static_cast<unsigned char>(ch);
+                if (value < 0x20) {
+                    escaped << "\\u00";
+                    const char* hex = "0123456789abcdef";
+                    escaped << hex[(value >> 4) & 0x0f] << hex[value & 0x0f];
+                } else {
+                    escaped << ch;
+                }
+                break;
+        }
+    }
+    return escaped.str();
+}
+
+std::string make_status_payload(
+    const std::string& agent_id,
+    const std::string& event,
+    const std::map<std::string, std::string>& metadata) {
+    std::ostringstream payload;
+    payload << "{\"agent_id\":\"" << json_escape(agent_id) << "\",";
+    payload << "\"event\":\"" << json_escape(event) << "\",";
+    payload << "\"metadata\":{";
+    bool first = true;
+    for (const auto& [key, value] : metadata) {
+        if (!first) {
+            payload << ",";
+        }
+        first = false;
+        payload << "\"" << json_escape(key) << "\":\"" << json_escape(value) << "\"";
+    }
+    payload << "}}";
+    return payload.str();
+}
+
+bool post_agent_status(
+    const Config& config,
+    const std::string& agent_id,
+    const std::string& event,
+    const std::map<std::string, std::string>& metadata) {
+    if (config.status_url.empty() || config.status_token.empty()) {
+        return true;
+    }
+
+    ParsedHttpUrl url;
+    if (!parse_http_url(config.status_url, &url)) {
+        wops::log_warn("tunnel", "status_url_invalid", {{"url", config.status_url}});
+        return false;
+    }
+
+    std::string error;
+    auto sock = wops::connect_tcp(url.host, url.port, &error);
+    if (!wops::socket_valid(sock)) {
+        wops::log_warn("tunnel", "status_connect_failed", {{"error", error}});
+        return false;
+    }
+
+    const std::string body = make_status_payload(agent_id, event, metadata);
+    std::ostringstream request;
+    request << "POST " << url.path << " HTTP/1.1\r\n";
+    request << "Host: " << wops::endpoint_to_string(url.host, url.port) << "\r\n";
+    request << "Content-Type: application/json\r\n";
+    request << "Content-Length: " << body.size() << "\r\n";
+    request << "X-WebhookOps-Tunnel-Token: " << config.status_token << "\r\n";
+    request << "Connection: close\r\n\r\n";
+    request << body;
+
+    const std::string text = request.str();
+    const bool sent = wops::send_all(sock, reinterpret_cast<const uint8_t*>(text.data()), text.size(), &error);
+    if (!sent) {
+        wops::log_warn("tunnel", "status_send_failed", {{"error", error}});
+    }
+    wops::close_socket(sock);
+    return sent;
+}
+
 class Controller {
    public:
     explicit Controller(Config config) : config_(std::move(config)) {}
@@ -310,6 +431,10 @@ class Controller {
     void request_stop();
     std::shared_ptr<AgentSession> select_agent();
     void remove_agent(const std::string& id);
+    void report_agent_status(
+        const std::string& id,
+        const std::string& event,
+        std::map<std::string, std::string> metadata = {});
 
    private:
     void control_accept_loop();
@@ -417,6 +542,7 @@ void AgentSession::read_loop() {
         }
 
         if (frame->type == wops::FrameType::Heartbeat) {
+            owner_.report_agent_status(id_, "heartbeat");
             continue;
         }
 
@@ -472,6 +598,7 @@ void AgentSession::read_loop() {
 
     alive_.store(false);
     close_all_streams("agent disconnected");
+    owner_.report_agent_status(id_, "offline");
     owner_.remove_agent(id_);
 }
 
@@ -563,6 +690,7 @@ void Controller::control_accept_loop() {
 
         agent->send({wops::FrameType::HelloOk, wops::kControlStream, wops::text_payload("ok")});
         wops::log_info("tunnel", "agent_online", {{"agent", node_id}, {"peer", peer}});
+        report_agent_status(node_id, "online", {{"peer", peer}});
         agent->start();
     }
 }
@@ -612,6 +740,19 @@ void Controller::remove_agent(const std::string& id) {
             selected_agent_ = agents_.begin()->first;
         }
     }
+}
+
+void Controller::report_agent_status(
+    const std::string& id,
+    const std::string& event,
+    std::map<std::string, std::string> metadata) {
+    if (config_.status_url.empty() || config_.status_token.empty()) {
+        return;
+    }
+    const Config config = config_;
+    std::thread([config, id, event, metadata = std::move(metadata)] {
+        post_agent_status(config, id, event, metadata);
+    }).detach();
 }
 
 void Controller::request_stop() {
@@ -842,6 +983,8 @@ void print_usage() {
     std::cout << "  --token token    legacy alias for --secret\n";
     std::cout << "  --state path\n";
     std::cout << "  --selected agent\n\n";
+    std::cout << "  --status-url http://host:port/path\n";
+    std::cout << "  --status-token token\n\n";
     std::cout << "  --tls-cert path\n";
     std::cout << "  --tls-key path\n\n";
     std::cout << "default control: 0.0.0.0:9700\n";
@@ -887,6 +1030,12 @@ void print_resolved_config(const Config& config) {
     if (!config.initial_selected_agent.empty()) {
         std::cout << "selected_agent=" << config.initial_selected_agent << "\n";
     }
+    if (!config.status_url.empty()) {
+        std::cout << "status_url=" << config.status_url << "\n";
+    }
+    if (!config.status_token.empty()) {
+        std::cout << "status_token=(set)\n";
+    }
 }
 
 bool apply_controller_config(const wops::ConfigFile& file, Config* config) {
@@ -922,6 +1071,14 @@ bool apply_controller_config(const wops::ConfigFile& file, Config* config) {
 
     if (const auto value = wops::config_get(file, "selected_agent"); !value.empty()) {
         config->initial_selected_agent = value;
+    }
+
+    if (const auto value = wops::config_get(file, "status_url"); !value.empty()) {
+        config->status_url = value;
+    }
+
+    if (const auto value = wops::config_get(file, "status_token"); !value.empty()) {
+        config->status_token = value;
     }
 
     if (const auto value = wops::config_get(file, "tls_cert"); !value.empty()) {
@@ -1010,6 +1167,10 @@ bool parse_args(int argc, char** argv, Config* config) {
                 std::cerr << "--selected cannot be empty\n";
                 return false;
             }
+        } else if (arg == "--status-url") {
+            config->status_url = require_value(arg);
+        } else if (arg == "--status-token") {
+            config->status_token = require_value(arg);
         } else if (arg == "--tls-cert") {
             config->tls.cert_path = require_value(arg);
             config->tls.enabled = true;

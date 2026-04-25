@@ -44,6 +44,7 @@ services:
       context: ./agent
     environment:
       WEBHOOKOPS_TUNNEL_SECRET: ${WEBHOOKOPS_TUNNEL_SECRET:-dev-secret}
+      WEBHOOKOPS_TUNNEL_STATUS_URL: ${WEBHOOKOPS_TUNNEL_STATUS_URL:-http://web:8000/internal/tunnel/agent-status/}
       WEBHOOKOPS_TUNNEL_STATUS_TOKEN: ${WEBHOOKOPS_TUNNEL_STATUS_TOKEN:-dev-status-token}
     ports:
       - "9700:9700"
