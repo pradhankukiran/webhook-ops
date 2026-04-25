@@ -1,5 +1,10 @@
 from django.contrib import admin
+from django.contrib.auth import get_user_model
+from django.contrib.auth.admin import GroupAdmin as DjangoGroupAdmin
+from django.contrib.auth.admin import UserAdmin as DjangoUserAdmin
+from django.contrib.auth.models import Group
 from unfold.admin import ModelAdmin, TabularInline
+from unfold.forms import AdminPasswordChangeForm, UserChangeForm, UserCreationForm
 
 from .models import (
     Agent,
@@ -12,6 +17,49 @@ from .models import (
 )
 from .replay import replay_event
 from .tasks import deliver_webhook_event
+
+User = get_user_model()
+admin.site.unregister(User)
+admin.site.unregister(Group)
+
+
+@admin.register(User)
+class UserAdmin(DjangoUserAdmin, ModelAdmin):
+    form = UserChangeForm
+    add_form = UserCreationForm
+    change_password_form = AdminPasswordChangeForm
+    list_display = ("username", "is_staff", "is_superuser", "last_login", "date_joined")
+    search_fields = ("username",)
+    fieldsets = (
+        (None, {"fields": ("username", "password")}),
+        (
+            "Permissions",
+            {
+                "fields": (
+                    "is_active",
+                    "is_staff",
+                    "is_superuser",
+                    "groups",
+                    "user_permissions",
+                )
+            },
+        ),
+        ("Important dates", {"fields": ("last_login", "date_joined")}),
+    )
+    add_fieldsets = (
+        (
+            None,
+            {
+                "classes": ("wide",),
+                "fields": ("username", "password1", "password2"),
+            },
+        ),
+    )
+
+
+@admin.register(Group)
+class GroupAdmin(DjangoGroupAdmin, ModelAdmin):
+    pass
 
 
 @admin.register(Agent)

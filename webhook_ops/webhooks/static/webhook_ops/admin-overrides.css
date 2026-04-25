@@ -21,3 +21,7 @@
 #site-name {
     line-height: 1.1 !important;
 }
+
+.flex.flex-col.select-none.min-w-0 > .text-subtle.text-xs.truncate {
+    display: none !important;
+}
