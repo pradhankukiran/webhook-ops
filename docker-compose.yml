@@ -7,7 +7,7 @@ x-app-environment: &app-environment
   REDIS_URL: ${REDIS_URL:-redis://redis:6379/0}
   CELERY_BROKER_URL: ${CELERY_BROKER_URL:-redis://redis:6379/0}
   CELERY_RESULT_BACKEND: ${CELERY_RESULT_BACKEND:-redis://redis:6379/0}
-  WEBHOOKOPS_PRIVATE_PROXY_URL: ${WEBHOOKOPS_PRIVATE_PROXY_URL:-http://host.docker.internal:9080}
+  WEBHOOKOPS_PRIVATE_PROXY_URL: ${WEBHOOKOPS_PRIVATE_PROXY_URL:-http://tunnel:9080}
 
 services:
   db:
@@ -36,6 +36,14 @@ services:
       timeout: 5s
       retries: 10
 
+  tunnel:
+    build:
+      context: ./agent
+    environment:
+      WEBHOOKOPS_TUNNEL_SECRET: ${WEBHOOKOPS_TUNNEL_SECRET:-dev-secret}
+    ports:
+      - "9700:9700"
+
   web:
     build: .
     command: >
@@ -63,6 +71,8 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
+      tunnel:
+        condition: service_started
 
   beat:
     build: .
