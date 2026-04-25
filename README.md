@@ -44,6 +44,8 @@ Implemented:
 - signature verification for generic, GitHub, Shopify, Slack, and Stripe-style requests
 - public HTTP delivery through Celery
 - private agent delivery through a reverse tunnel proxy
+- agent enrollment command generation
+- tunnel-driven agent online/heartbeat/offline status sync
 - delivery attempts, retries, dead-letter state, replay-ready event storage
 - Django Admin management views
 - Docker Compose runtime with Postgres, Redis, web, worker, beat, and tunnel services
@@ -51,7 +53,7 @@ Implemented:
 Next phases:
 
 - dashboard views for event search and delivery inspection
-- agent enrollment and status sync into Django
+- per-agent tunnel authentication instead of a shared tunnel secret
 - production deployment hardening
 
 ## Local Development
@@ -141,6 +143,12 @@ from a connected agent machine.
 WebhookOps worker -> tunnel proxy -> connected agent -> localhost/internal app
 ```
 
+In Django Admin:
+
+1. Create an `Agent`.
+2. Set its `Allowed targets`, for example `["localhost:8000"]`.
+3. Use the API action `POST /api/agents/<id>/enrollment/` to generate the run command.
+
 Build the native tunnel binaries:
 
 ```bash
@@ -163,6 +171,14 @@ agent/build/webhookops-agent join \
   --secret dev-secret \
   --allow localhost:8000
 ```
+
+The tunnel posts status events to:
+
+```text
+/internal/tunnel/agent-status/
+```
+
+Those events update the agent's `status` and `last_seen_at` fields in Django.
 
 Then create a Django Admin `Destination`:
 
