@@ -9,6 +9,8 @@ from .models import (
     WebhookEvent,
     WebhookSource,
 )
+from .replay import replay_event
+from .tasks import deliver_webhook_event
 
 
 @admin.register(Agent)
@@ -76,6 +78,20 @@ class WebhookEventAdmin(admin.ModelAdmin):
     search_fields = ("idempotency_key", "provider_event_id", "body_sha256", "event_type")
     readonly_fields = ("body_sha256", "attempt_count", "created_at", "updated_at")
     inlines = [DeliveryAttemptInline]
+    actions = ["replay_events"]
+
+    @admin.action(description="Replay selected events")
+    def replay_events(self, request, queryset):
+        queued = 0
+        for event in queryset:
+            replay = replay_event(
+                event,
+                requested_by=request.user,
+                reason="Replayed via admin",
+            )
+            deliver_webhook_event.delay(replay.event_id)
+            queued += 1
+        self.message_user(request, f"Queued replay for {queued} event(s).")
 
 
 @admin.register(DeliveryAttempt)

@@ -210,6 +210,54 @@ def test_successful_delivery_marks_pending_replay_completed():
 
 
 @pytest.mark.django_db
+def test_admin_replay_action_queues_replay(client):
+    user = get_user_model().objects.create_superuser(
+        username="admin",
+        email="admin@example.test",
+        password="password",
+    )
+    destination = Destination.objects.create(
+        name="App",
+        slug="app",
+        url="https://app.example.test/webhooks",
+    )
+    source = WebhookSource.objects.create(
+        name="Generic",
+        slug="generic",
+        default_destination=destination,
+    )
+    event = WebhookEvent.objects.create(
+        source=source,
+        destination=destination,
+        idempotency_key="evt_admin_replay",
+        status=WebhookEvent.Status.DEAD_LETTERED,
+        attempt_count=6,
+        headers={"content-type": "application/json"},
+        payload={"id": "evt_admin_replay"},
+        raw_body='{"id": "evt_admin_replay"}',
+        body_sha256="admin-replay",
+        last_error="exhausted",
+    )
+    client.force_login(user)
+
+    with patch("webhook_ops.webhooks.admin.deliver_webhook_event.delay") as delay:
+        response = client.post(
+            reverse("admin:webhooks_webhookevent_changelist"),
+            data={
+                "action": "replay_events",
+                "_selected_action": [str(event.id)],
+            },
+        )
+
+    event.refresh_from_db()
+    assert response.status_code == 302
+    assert event.status == WebhookEvent.Status.QUEUED
+    assert event.attempt_count == 0
+    assert ReplayRequest.objects.filter(event=event, requested_by=user).exists()
+    delay.assert_called_once_with(event.id)
+
+
+@pytest.mark.django_db
 def test_replay_api_resets_event_and_queues_delivery(client):
     user = get_user_model().objects.create_superuser(
         username="admin",
